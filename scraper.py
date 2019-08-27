@@ -10,6 +10,34 @@ from lxml import etree as ET
 PARSER = argparse.ArgumentParser(description='Make story dataset.')
 PARSER.add_argument('--path_regex', required=True)
 
+def split_text_regex(text, path):
+    max_count = 0
+    count = 0
+    for i in range(len(text[:150]) - 1):
+        if text[i] == '\n' and text[i + 1] != '\n':
+            max_count = max(max_count, count + 1)
+            count = 0
+            continue
+
+        if text[i] == text[i + 1] == '\n':
+            count += 1
+
+    max_count = max(max_count, count)
+    max_count = max(max_count, 1)  # max_count shouldn't be 0.
+    # Search for: Sequence of anything that's not line breaks (the title,
+    # hopefully!) followed by a sequence of line breaks (separation between
+    # title and body) followed by whatever (body).
+    match = re.search(r'([\s\S]+?)[\r\n]{%s}([\s\S]+)' % max_count, text)
+    if not match:
+        print('Story in %s gave no match!' % path)
+        return None, None
+
+    # Extract title and body from regexp results.
+    title = match.group(1)
+    body = match.group(2)
+
+    return title, body
+
 
 def strip_chars(text, extra=u''):
     """Strip text from control characters not supported by XML."""
@@ -32,21 +60,16 @@ def pdf_to_xml(path, story_id):
     # Convert bytes-like raw_text to utf-8 encoded string.
     text = raw_text.decode(u'utf-8')
 
-    # Search for: Sequence of anything that's not line breaks (the title,
-    # hopefully!) followed by a sequence of line breaks (separation between
-    # title and body) followed by whatever (body).
-    match = re.search(r'([^\r\n]+)[\r\n]+([\s\S]+)', text)
-    if not match:
-        print('Story in %s gave no match!' % path)
+    title, body = split_text_regex(text, path)
+    if not title and not body:
         return None
-
-    # Extract title and body from regexp results.
-    title = match.group(1)
-    body = match.group(2)
 
     story_node = ET.Element('story')
     id_node = ET.SubElement(story_node, 'id')
     id_node.text = str(story_id)
+
+    filename_node = ET.SubElement(story_node, 'id')
+    filename_node.text = str(path.split('/')[-1])
 
     title_node = ET.SubElement(story_node, 'title')
     title_node.text = strip_chars(title)
